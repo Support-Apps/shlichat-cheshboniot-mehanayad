@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>שליחת חשבוניות ומסמכים מהנייד</title>
+    <!-- SheetJS (XLSX / CSV) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Assistant', sans-serif; }
+        body { background: #ffffff; color: #000; padding: 15px; direction: rtl; text-align: right; }
+
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 16px; }
+        .header h1 { font-size: 1.3rem; font-weight: 700; }
+        .bsd { font-weight: 700; font-size: 1rem; }
+
+        .card { border: 1px solid #000; padding: 14px; border-radius: 6px; margin-bottom: 14px; background: #fff; }
+        .card-title { font-weight: 700; font-size: 1rem; border-bottom: 1px solid #ddd; padding-bottom: 6px; margin-bottom: 10px; }
+
+        label { font-weight: 600; display: block; margin-bottom: 6px; font-size: 0.9rem; }
+        input[type="file"], select, input[type="text"], textarea { width: 100%; padding: 10px; border: 1px solid #000; border-radius: 4px; font-size: 0.95rem; margin-bottom: 10px; }
+        
+        textarea { height: 80px; resize: none; }
+
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+        .btn { background: #000; color: #fff; border: none; padding: 12px; border-radius: 4px; font-weight: 700; font-size: 0.95rem; cursor: pointer; text-align: center; text-decoration: none; }
+        .btn-outline { background: #fff; color: #000; border: 1px solid #000; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="bsd">בס"ד</div>
+        <h1>שליחת מסמכים וחשבוניות מהנייד</h1>
+        <div></div>
+    </div>
+
+    <!-- 1. אינדקס לקוחות -->
+    <div class="card">
+        <div class="card-title">1. טעינת אנשי קשר (Excel / CSV)</div>
+        <input type="file" id="contactsFile" accept=".xlsx, .xls, .csv">
+        
+        <label for="customerSelect">בחר לקוח:</label>
+        <select id="customerSelect" disabled>
+            <option value="">-- טען קובץ אנשי קשר תחילה --</option>
+        </select>
+    </div>
+
+    <!-- 2. פרטי המסמך והודעה -->
+    <div class="card">
+        <div class="card-title">2. פרטי המסמך והודעה</div>
+        <label for="docNum">מספר חשבונית / מסמך:</label>
+        <input type="text" id="docNum" placeholder="למשל: 10244">
+
+        <label for="docFile">צקף/העלה קובץ חשבונית (PDF/תמונה):</label>
+        <input type="file" id="docFile" accept="application/pdf, image/*">
+
+        <label for="customMsg">נוסח הודעה:</label>
+        <textarea id="customMsg">שלום [שם], מצורפת חשבונית מס' [מסמך]. נשמח לאישור קבלה.</textarea>
+    </div>
+
+    <!-- 3. לחצני שליחה -->
+    <div class="btn-group">
+        <button class="btn" id="sendWaBtn" disabled>📱 WhatsApp</button>
+        <button class="btn btn-outline" id="sendMailBtn" disabled>✉️ אימייל</button>
+    </div>
+
+    <script>
+        let contacts = {};
+
+        document.getElementById('contactsFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+                    const select = document.getElementById('customerSelect');
+                    select.innerHTML = '<option value="">-- בחר לקוח מהרשימה --</option>';
+                    contacts = {};
+
+                    jsonRows.forEach(r => {
+                        const name = r['שם לקוח'] || r['שם'] || r['לקוח'] || '';
+                        const phone = r['טלפון'] || r['נייד'] || r['סלולרי'] || '';
+                        const email = r['מייל'] || r['אימייל'] || r['דוא"ל'] || '';
+
+                        if (name) {
+                            contacts[name] = { phone, email };
+                            const opt = document.createElement('option');
+                            opt.value = name;
+                            opt.textContent = `${name} ${phone ? '(' + phone + ')' : ''}`;
+                            select.appendChild(opt);
+                        }
+                    });
+
+                    select.disabled = false;
+                    document.getElementById('sendWaBtn').disabled = false;
+                    document.getElementById('sendMailBtn').disabled = false;
+                    alert('אנשי הקשר נטענו בהצלחה!');
+                } catch (err) {
+                    alert('שגיאה בקריאת הקובץ');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        document.getElementById('sendWaBtn').addEventListener('click', function() {
+            const customerName = document.getElementById('customerSelect').value;
+            const docNum = document.getElementById('docNum').value || '';
+            let msgTemplate = document.getElementById('customMsg').value;
+
+            if (!customerName || !contacts[customerName]) {
+                alert('אנא בחר לקוח');
+                return;
+            }
+
+            const phone = contacts[customerName].phone;
+            if (!phone) {
+                alert('ללקוח זה אין מספר טלפון מעודכן');
+                return;
+            }
+
+            const text = encodeURIComponent(msgTemplate.replace('[שם]', customerName).replace('[מסמך]', docNum));
+            window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
+        });
+
+        document.getElementById('sendMailBtn').addEventListener('click', function() {
+            const customerName = document.getElementById('customerSelect').value;
+            const docNum = document.getElementById('docNum').value || '';
+            let msgTemplate = document.getElementById('customMsg').value;
+
+            if (!customerName || !contacts[customerName]) {
+                alert('אנא בחר לקוח');
+                return;
+            }
+
+            const email = contacts[customerName].email;
+            if (!email) {
+                alert('ללקוח זה אין כתובת מייל מעודכנת');
+                return;
+            }
+
+            const subject = encodeURIComponent(`חשבונית מס' ${docNum} - ${customerName}`);
+            const body = encodeURIComponent(msgTemplate.replace('[שם]', customerName).replace('[מסמך]', docNum));
+            window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+        });
+    </script>
+</body>
+</html>
